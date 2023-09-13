@@ -1,0 +1,95 @@
+version: "3.9"
+services:
+  postgres:
+    container_name: redmine-postgres
+    image: postgres:14.8-alpine3.18
+    command:
+      - "postgres"
+      - "-c"
+      - "max_connections=50"
+      - "-c"
+      - "shared_buffers=1GB"
+      - "-c"
+      - "effective_cache_size=4GB"
+      - "-c"
+      - "work_mem=16MB"
+      - "-c"
+      - "maintenance_work_mem=512MB"
+      - "-c"
+      - "random_page_cost=1.1"
+      - "-c"
+      - "temp_file_limit=10GB"
+      - "-c"
+      - "log_min_duration_statement=200ms"
+      - "-c"
+      - "idle_in_transaction_session_timeout=10s"
+      - "-c"
+      - "lock_timeout=1s"
+      - "-c"
+      - "statement_timeout=60s"
+      - "-c"
+      - "shared_preload_libraries=pg_stat_statements"
+      - "-c"
+      - "pg_stat_statements.max=10000"
+      - "-c"
+      - "pg_stat_statements.track=all"
+    environment:
+      POSTGRES_DB: "redmine"
+      POSTGRES_USER: "redmine"
+      POSTGRES_PASSWORD: $POSTGRES_PASSWORD
+      PGDATA: "/var/lib/postgresql/data/pgdata"
+    volumes:
+      - data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U redmine -d redmine"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 4G
+    networks:
+      - postgres
+
+  nginx:
+    container_name: nginx
+    image: nginx:1.25.2
+    volumes:
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d
+      - ./nginx/logs:/var/log/nginx
+    restart: unless-stopped
+    depends_on:
+      - redmine
+    ports:
+      - "80:80"
+      - "443:443"
+    networks:
+      - postgres
+
+  redmine:
+    image: redmine
+    container_name: redmine
+    volumes:
+      - ./redmine/public/themes/:/usr/src/redmine/public/themes/:ro
+    restart: always
+    environment:
+      REDMINE_DB_POSTGRES: postgres
+      REDMINE_DB_USERNAME: redmine
+      REDMINE_DB_PASSWORD: $POSTGRES_PASSWORD
+      REDMINE_SECRET_KEY_BASE: $REDMINE_SECRET_KEY_BASE
+    depends_on:
+      - postgres
+    networks:
+      - postgres
+
+volumes:
+  data:
+
+networks:
+  postgres:
+    driver: bridge
